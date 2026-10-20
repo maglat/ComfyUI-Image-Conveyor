@@ -511,7 +511,11 @@ function installNode(node, attempts = 0) {
     hitboxes: [],
     mainHitbox: null,
     hoverTarget: null,
-    previousBeforeQueued: null
+    previousBeforeQueued: null,
+    getMask: () => currentMask(node),
+    setMask: (mask) => setMask(node, mask),
+    isMainEnabled: () => currentMainEnabled(node),
+    setMainEnabled: (enabled) => setMainEnabled(node, enabled)
   }
   ctx.referenceToggles = ext
   wrapBeforeQueued(node, queueWidget, ext)

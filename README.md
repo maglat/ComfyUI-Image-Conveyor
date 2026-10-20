@@ -251,6 +251,10 @@ The original output indices remain stable. `last_frame` is append-only at slot 1
 
 After updating, restart ComfyUI and hard-refresh/reload the frontend so both Python backend and browser extension code are current.
 
+### ComfyUI Nodes 2.0
+
+Image Conveyor supports ComfyUI's Vue-based **Nodes 2.0** renderer. When `Comfy.VueNodes.Enabled` is on, the Reference Shelf, output switches, drag-and-drop targets, slot context menus, and character presets are rendered as DOM controls inside the node instead of being painted on the canvas. New nodes reserve extra height for the shelf in this mode. The legacy canvas renderer remains unchanged when Nodes 2.0 is off.
+
 The node keeps the `ImageConveyor` class and legacy `SequentialBatchImageLoader` alias.
 
 ## Install
