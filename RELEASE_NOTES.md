@@ -1,3 +1,20 @@
+# Image Conveyor v1.7.5
+
+## Nodes 2.0 support
+
+ComfyUI Nodes 2.0 renders nodes through Vue and skips the legacy `onDrawForeground` canvas pass. The Reference Shelf and output toggles were previously canvas-only, so they disappeared when Nodes 2.0 was enabled.
+
+v1.7.5 adds a DOM-based Reference Shelf for the Vue renderer:
+
+- eight persistent reference slots with thumbnails, clear buttons, and per-slot output switches;
+- click an empty slot to choose files, or drag images, gallery cards, and character presets onto a slot;
+- drag populated slots to reorder them;
+- right-click or press Enter on a populated slot for preview, path copy, and clear actions;
+- Main and Last Frame output switches plus the character preset menu in the shelf header;
+- new nodes reserve extra height for the shelf in Nodes 2.0 mode.
+
+The legacy canvas renderer is unchanged and remains the fallback when Nodes 2.0 is disabled.
+
 # Image Conveyor v1.7.4
 
 This hotfix restores ComfyUI global shortcuts such as **Ctrl+S / Cmd+S** with current `ComfyUI_frontend` behavior while preserving the Image Conveyor preview lightbox as a real modal when it is actually open.

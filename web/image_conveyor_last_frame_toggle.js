@@ -225,7 +225,12 @@ function installNode(node, attempts = 0) {
   }
   patchedNodes.add(node)
 
-  const ext = { hitbox: null, hovered: false }
+  const ext = {
+    hitbox: null,
+    hovered: false,
+    isEnabled: () => currentLastFrameEnabled(node),
+    setEnabled: (enabled) => setLastFrameEnabled(node, enabled)
+  }
   node.__bil.lastFrameToggle = ext
 
   const previousDrawForeground = node.onDrawForeground

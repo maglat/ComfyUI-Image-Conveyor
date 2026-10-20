@@ -1232,6 +1232,7 @@ function installNodeEnhancement(node) {
     removed: false
   }
   ctx.icx = ext
+  ext.assignReferences = (startIndex, items = [], externalFiles = []) => assignReferences(node, startIndex, items, externalFiles)
   ctx.browser.input.sort = DEFAULT_LIBRARY_SORT
   if (ctx.inputSort) ctx.inputSort.value = DEFAULT_LIBRARY_SORT
   ctx.folderSelect?.classList.add('icx-folder-select')

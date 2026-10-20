@@ -75,6 +75,7 @@ const IMAGE_EXTENSIONS = new Set([
 const MIN_WIDGET_HEIGHT = 540
 const MIN_NODE_WIDTH = 520
 const MIN_NODE_HEIGHT = 760
+const VUE_SHELF_RESERVE = 180
 const CARD_GAP = 10
 const GALLERY_OVERSCAN_ROWS = 2
 const FAST_SCROLL_SETTLE_MS = 80
@@ -1880,6 +1881,32 @@ function ensureStyles() {
     .bil-image-menu button { display: block; width: 100%; border: 0; border-radius: 6px; padding: 6px 7px; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
     .bil-image-menu button:hover, .bil-image-menu button:focus-visible { background: rgba(120,175,240,.18); outline: none; }
     .bil-image-menu button.bil-danger { color: #ffaaaa; }
+    .bil-shelf { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; padding: 6px; box-sizing: border-box; border: 1px solid rgba(255,255,255,.10); border-radius: 9px; background: rgba(0,0,0,.14); }
+    .bil-shelf[hidden] { display: none; }
+    .bil-shelf-header { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .bil-shelf-character { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 650; padding: 2px 4px; border-radius: 5px; cursor: pointer; }
+    .bil-shelf-character:hover { background: rgba(255,255,255,.08); }
+    .bil-shelf-action, .bil-shelf-switch { border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.055); color: inherit; border-radius: 6px; padding: 3px 7px; font: inherit; cursor: pointer; white-space: nowrap; }
+    .bil-shelf-action:hover, .bil-shelf-switch:hover { background: rgba(255,255,255,.11); }
+    .bil-shelf-switch { opacity: .55; }
+    .bil-shelf-switch[data-enabled="true"] { opacity: 1; border-color: rgba(115,175,250,.65); background: rgba(105,165,240,.20); }
+    .bil-shelf-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 5px; }
+    .bil-shelf-slot { position: relative; min-width: 0; height: 64px; overflow: hidden; box-sizing: border-box; border: 1px solid rgba(255,255,255,.15); border-radius: 7px; background: rgba(255,255,255,.035); cursor: pointer; }
+    .bil-shelf-slot.bil-has-ref { background: rgba(0,0,0,.30); }
+    .bil-shelf-slot.bil-shelf-drop { border-color: rgba(110,180,255,.98); box-shadow: inset 0 0 0 1px rgba(110,180,255,.6); }
+    .bil-shelf-slot.bil-shelf-dragging { opacity: .45; }
+    .bil-shelf-slot:focus-visible { outline: 2px solid rgba(150,200,255,.95); outline-offset: -3px; }
+    .bil-shelf-thumb { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); object-fit: contain; opacity: 0; pointer-events: none; }
+    .bil-shelf-thumb.ready { opacity: 1; }
+    .bil-shelf-thumb[hidden] { display: none; }
+    .bil-shelf-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .72; font-size: 11px; pointer-events: none; }
+    .bil-shelf-clear { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: rgba(12,12,14,.78); color: #fff; font: 15px/20px system-ui, sans-serif; cursor: pointer; }
+    .bil-shelf-clear:hover { background: rgba(200,60,60,.85); }
+    .bil-shelf-clear[hidden] { display: none; }
+    .bil-shelf-toggle { position: absolute; left: 3px; bottom: 3px; width: 22px; height: 12px; padding: 0; box-sizing: border-box; border: 1px solid rgba(255,255,255,.26); border-radius: 999px; background: rgba(255,255,255,.10); cursor: pointer; }
+    .bil-shelf-toggle::after { content: ''; position: absolute; top: 50%; left: 2px; width: 7px; height: 7px; border-radius: 50%; background: rgba(220,224,230,.82); transform: translateY(-50%); transition: left 80ms ease; }
+    .bil-shelf-toggle[data-enabled="true"] { background: rgba(91,158,238,.72); border-color: rgba(145,200,255,.88); }
+    .bil-shelf-toggle[data-enabled="true"]::after { left: 11px; background: rgba(248,251,255,.98); }
     @media (max-width: 600px) { .bil-browserbar { grid-template-columns: minmax(100px,1fr) auto auto; } .bil-browserbar .bil-size-select { display: none; } }
   `
   document.head.appendChild(style)
@@ -3371,6 +3398,7 @@ function renderGalleryNode(node) {
   const snapshot = getCurrentState(node)
   cacheRenderableState(node, snapshot.state, snapshot.uiState)
   const { state, uiState } = snapshot
+  updateReferenceShelfDom(node)
   const validQueueIds = new Set(state.items.map((item) => item.id))
   ctx.browser.conveyor.selected = new Set(
     Array.from(ctx.browser.conveyor.selected).filter((id) => validQueueIds.has(id))
@@ -3646,6 +3674,364 @@ function handleGalleryKeyDown(node, event) {
   return true
 }
 
+function isVueNodesMode() {
+  return Boolean(globalThis.LiteGraph?.vueNodesMode)
+}
+
+function ensureVueShelfHeight(node, minHeight) {
+  if (!isVueNodesMode()) return
+  const apply = () => {
+    const ctx = node.__bil
+    if (!ctx || ctx.removed) return
+    const current = Number(node.size?.[1] || 0)
+    if (current >= minHeight) return
+    node.setSize?.([Math.max(Number(node.size?.[0] || 0), MIN_NODE_WIDTH), minHeight])
+  }
+  requestAnimationFrame(apply)
+  setTimeout(apply, 0)
+  setTimeout(apply, 250)
+  setTimeout(apply, 750)
+}
+
+function referenceToggleApi(node) {
+  return node?.__bil?.referenceToggles ?? null
+}
+
+function lastFrameToggleApi(node) {
+  return node?.__bil?.lastFrameToggle ?? null
+}
+
+function referenceEnabledMask(node) {
+  const api = referenceToggleApi(node)
+  if (typeof api?.getMask === 'function') return api.getMask()
+  const stored = node?.properties?.image_conveyor_reference_enabled
+  return Array.isArray(stored) && stored.length >= REFERENCE_SLOT_COUNT
+    ? stored.slice(0, REFERENCE_SLOT_COUNT).map(Boolean)
+    : Array(REFERENCE_SLOT_COUNT).fill(true)
+}
+
+function openReferenceFilePicker(node, startIndex) {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff,.avif'
+  input.multiple = true
+  input.hidden = true
+  input.style.display = 'none'
+  document.body.appendChild(input)
+  const cleanup = () => input.remove()
+  input.addEventListener('change', () => {
+    const files = input.files
+    cleanup()
+    if (files?.length) void importReferenceOnly(node, files, startIndex)
+  }, { once: true })
+  input.addEventListener('cancel', cleanup, { once: true })
+  input.click()
+}
+
+function toggleReferenceOutputEnabled(node, index) {
+  const api = referenceToggleApi(node)
+  if (typeof api?.getMask !== 'function' || typeof api?.setMask !== 'function') return false
+  const mask = api.getMask().slice()
+  mask[index] = !mask[index]
+  api.setMask(mask)
+  return true
+}
+
+function toggleMainOutputEnabled(node) {
+  const api = referenceToggleApi(node)
+  if (typeof api?.isMainEnabled !== 'function' || typeof api?.setMainEnabled !== 'function') return false
+  api.setMainEnabled(!api.isMainEnabled())
+  return true
+}
+
+function toggleLastFrameOutputEnabled(node) {
+  const api = lastFrameToggleApi(node)
+  if (typeof api?.isEnabled !== 'function' || typeof api?.setEnabled !== 'function') return false
+  api.setEnabled(!api.isEnabled())
+  return true
+}
+
+function createReferenceShelfDom(node) {
+  const shelf = document.createElement('div')
+  shelf.className = 'bil-shelf'
+  shelf.hidden = true
+
+  const header = document.createElement('div')
+  header.className = 'bil-shelf-header'
+  const character = document.createElement('button')
+  character.type = 'button'
+  character.className = 'bil-shelf-character'
+  character.title = 'Load, save, or manage character presets'
+  character.textContent = 'Character: none'
+  const mainToggle = document.createElement('button')
+  mainToggle.type = 'button'
+  mainToggle.className = 'bil-shelf-switch'
+  mainToggle.textContent = 'Main'
+  mainToggle.title = 'Enable or disable the main image output'
+  const lastToggle = document.createElement('button')
+  lastToggle.type = 'button'
+  lastToggle.className = 'bil-shelf-switch'
+  lastToggle.textContent = 'Last'
+  lastToggle.title = 'Enable or disable the last_frame output'
+  const saveBtn = document.createElement('button')
+  saveBtn.type = 'button'
+  saveBtn.className = 'bil-shelf-action'
+  saveBtn.textContent = 'Save'
+  saveBtn.title = 'Save the current references as the active character'
+  const menuBtn = document.createElement('button')
+  menuBtn.type = 'button'
+  menuBtn.className = 'bil-shelf-action'
+  menuBtn.textContent = '•••'
+  menuBtn.title = 'Character presets'
+  header.append(character, mainToggle, lastToggle, saveBtn, menuBtn)
+
+  const grid = document.createElement('div')
+  grid.className = 'bil-shelf-grid'
+  const slots = []
+  for (let index = 0; index < REFERENCE_SLOT_COUNT; index += 1) {
+    const slot = document.createElement('div')
+    slot.className = 'bil-shelf-slot'
+    slot.dataset.referenceIndex = String(index)
+    slot.tabIndex = 0
+    slot.setAttribute('role', 'button')
+    const thumb = document.createElement('img')
+    thumb.className = 'bil-shelf-thumb'
+    thumb.alt = ''
+    thumb.draggable = false
+    thumb.hidden = true
+    const placeholder = document.createElement('span')
+    placeholder.className = 'bil-shelf-placeholder'
+    placeholder.textContent = `Ref ${index + 1}`
+    const clear = document.createElement('button')
+    clear.type = 'button'
+    clear.className = 'bil-shelf-clear'
+    clear.textContent = '×'
+    clear.title = `Clear reference ${index + 1}`
+    clear.hidden = true
+    const toggle = document.createElement('button')
+    toggle.type = 'button'
+    toggle.className = 'bil-shelf-toggle'
+    toggle.title = `Toggle ref_image_${index + 1} output`
+    toggle.setAttribute('aria-label', `Toggle ref_image_${index + 1} output`)
+    slot.append(thumb, placeholder, clear, toggle)
+
+    const referenceAt = () => getRenderableState(node).state.reference_slots[index]
+
+    clear.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      clearReferenceSlot(node, index)
+    })
+    toggle.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (toggleReferenceOutputEnabled(node, index)) updateReferenceShelfDom(node)
+    })
+    slot.addEventListener('click', (event) => {
+      if (event.target === clear || event.target === toggle) return
+      const reference = referenceAt()
+      if (reference) {
+        showImageContextMenu(node, reference, event.clientX, event.clientY, { referenceIndex: index })
+        return
+      }
+      openReferenceFilePicker(node, index)
+    })
+    slot.addEventListener('contextmenu', (event) => {
+      const reference = referenceAt()
+      if (!reference) return
+      event.preventDefault()
+      event.stopPropagation()
+      showImageContextMenu(node, reference, event.clientX, event.clientY, { referenceIndex: index })
+    })
+    slot.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      const reference = referenceAt()
+      if (reference) {
+        const rect = slot.getBoundingClientRect()
+        showImageContextMenu(node, reference, rect.left, rect.top, { referenceIndex: index })
+      } else {
+        openReferenceFilePicker(node, index)
+      }
+    })
+    slot.addEventListener('dragstart', (event) => {
+      const ctx = node.__bil
+      if (!referenceAt()) {
+        event.preventDefault()
+        return
+      }
+      if (ctx) ctx.referenceShelfDomDragIndex = index
+      event.dataTransfer?.setData('application/x-image-conveyor-shelf', String(index))
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+      slot.classList.add('bil-shelf-dragging')
+    })
+    slot.addEventListener('dragend', () => {
+      const ctx = node.__bil
+      if (ctx) ctx.referenceShelfDomDragIndex = null
+      slot.classList.remove('bil-shelf-dragging')
+      for (const entry of slots) entry.root.classList.remove('bil-shelf-drop')
+    })
+    slot.addEventListener('dragover', (event) => {
+      const ctx = node.__bil
+      const internal = ctx?.referenceShelfDomDragIndex != null
+      if (!internal && !activeReferenceDrag && !hasExternalFileDrag(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.dataTransfer) event.dataTransfer.dropEffect = internal ? 'move' : 'copy'
+      for (const entry of slots) entry.root.classList.toggle('bil-shelf-drop', entry.root === slot)
+    })
+    slot.addEventListener('dragleave', () => slot.classList.remove('bil-shelf-drop'))
+    slot.addEventListener('drop', async (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      slot.classList.remove('bil-shelf-drop')
+      const ctx = node.__bil
+      const fromIndex = ctx?.referenceShelfDomDragIndex
+      if (ctx) ctx.referenceShelfDomDragIndex = null
+      if (fromIndex != null) {
+        if (fromIndex !== index) {
+          const { state, uiState } = getRenderableState(node)
+          state.reference_slots = moveReferenceSlot(state.reference_slots, fromIndex, index)
+          updateState(node, state, uiState)
+        }
+        return
+      }
+      const drag = activeReferenceDrag
+      if (drag) {
+        activeReferenceDrag = null
+        const items = ctx?.icx?.cardDrag?.items?.length ? ctx.icx.cardDrag.items : [drag.item]
+        const characterId = String(getRenderableState(node).state.active_reference_preset_id || '')
+        if (characterId && typeof ctx?.icx?.assignReferences === 'function') {
+          await ctx.icx.assignReferences(index, items, [])
+        } else {
+          await assignReferenceDrag(node, drag, index)
+        }
+        return
+      }
+      if (hasExternalFileDrag(event)) {
+        const files = await getDroppedImageFiles(event)
+        if (files.length) {
+          const characterId = String(getRenderableState(node).state.active_reference_preset_id || '')
+          if (characterId && typeof ctx?.icx?.assignReferences === 'function') {
+            const rawFiles = Array.from(event.dataTransfer?.files ?? []).filter(isProbablyImageFile)
+            await ctx.icx.assignReferences(index, [], rawFiles)
+          } else {
+            await importReferenceOnly(node, files, index)
+          }
+        }
+      }
+    })
+    slots.push({ root: slot, thumb, placeholder, clear, toggle, thumbKey: null })
+    grid.appendChild(slot)
+  }
+
+  character.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = character.getBoundingClientRect()
+    void showPresetPopover(node, rect.left, rect.bottom + 4)
+  })
+  mainToggle.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (toggleMainOutputEnabled(node)) updateReferenceShelfDom(node)
+  })
+  lastToggle.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (toggleLastFrameOutputEnabled(node)) updateReferenceShelfDom(node)
+  })
+  saveBtn.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    void saveActiveReferencePreset(node)
+  })
+  menuBtn.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = menuBtn.getBoundingClientRect()
+    void showPresetPopover(node, rect.left, rect.bottom + 4)
+  })
+
+  shelf.append(header, grid)
+  return { root: shelf, character, mainToggle, lastToggle, saveBtn, menuBtn, slots }
+}
+
+function updateReferenceShelfDom(node) {
+  const ctx = node.__bil
+  const shelf = ctx?.referenceShelfDom
+  if (!ctx || !shelf || ctx.removed) return
+  const { state } = getRenderableState(node)
+  const persistent = state.output_mode === OUTPUT_MODE_PERSISTENT
+  shelf.root.hidden = !persistent
+  if (!persistent) {
+    ctx.referenceShelfDomDragIndex = null
+    return
+  }
+  const characterLabel = referencePresetDisplay(
+    ctx.presets,
+    ctx.presetsLoaded,
+    state.active_reference_preset_id,
+    state.reference_slots
+  ).label
+  const nextLabel = `Character: ${characterLabel}`
+  if (shelf.character.textContent !== nextLabel) shelf.character.textContent = nextLabel
+
+  const toggles = referenceToggleApi(node)
+  const mainEnabled = typeof toggles?.isMainEnabled === 'function'
+    ? toggles.isMainEnabled()
+    : true
+  const lastApi = lastFrameToggleApi(node)
+  const lastEnabled = typeof lastApi?.isEnabled === 'function' ? lastApi.isEnabled() : true
+  shelf.mainToggle.dataset.enabled = String(mainEnabled)
+  shelf.mainToggle.setAttribute('aria-pressed', String(mainEnabled))
+  shelf.lastToggle.dataset.enabled = String(lastEnabled)
+  shelf.lastToggle.setAttribute('aria-pressed', String(lastEnabled))
+  shelf.lastToggle.hidden = !lastApi
+
+  const mask = referenceEnabledMask(node)
+  for (let index = 0; index < shelf.slots.length; index += 1) {
+    const entry = shelf.slots[index]
+    const reference = state.reference_slots[index]
+    const thumbKey = reference?.annotated || ''
+    if (entry.thumbKey !== thumbKey) {
+      entry.thumbKey = thumbKey
+      entry.thumb.hidden = !reference
+      entry.placeholder.hidden = Boolean(reference)
+      entry.clear.hidden = !reference
+      entry.root.draggable = Boolean(reference)
+      entry.root.classList.toggle('bil-has-ref', Boolean(reference))
+      entry.root.title = reference
+        ? String(reference.annotated || '')
+        : `Reference ${index + 1}: click to choose an image`
+      if (reference) {
+        entry.thumb.classList.remove('ready')
+        entry.thumb.onload = () => entry.thumb.classList.add('ready')
+        entry.thumb.onerror = () => {
+          entry.thumb.hidden = true
+          entry.placeholder.hidden = false
+        }
+        entry.thumb.src = thumbnailUrl(reference, 'small')
+      } else {
+        entry.thumb.onload = null
+        entry.thumb.onerror = null
+        entry.thumb.removeAttribute('src')
+      }
+    }
+    const enabled = Boolean(mask[index])
+    entry.toggle.dataset.enabled = String(enabled)
+    entry.toggle.setAttribute('aria-pressed', String(enabled))
+    entry.toggle.title = `ref_image_${index + 1} output: ${enabled ? 'on' : 'off'}`
+  }
+
+  if ((!toggles || !lastApi) && !ctx.referenceShelfToggleRetry) {
+    ctx.referenceShelfToggleRetry = setTimeout(() => {
+      ctx.referenceShelfToggleRetry = 0
+      if (!ctx.removed) updateReferenceShelfDom(node)
+    }, 300)
+  }
+}
+
 function buildGalleryDom(node) {
   ensureStyles()
   const root = document.createElement('div')
@@ -3855,6 +4241,10 @@ function buildGalleryDom(node) {
     imageContextMenu: null, imageContextMenuDismiss: null, imageContextMenuSource: null
   }
   const ctx = node.__bil
+  ctx.referenceShelfDomDragIndex = null
+  ctx.referenceShelfToggleRetry = 0
+  ctx.referenceShelfDom = isVueNodesMode() ? createReferenceShelfDom(node) : null
+  if (ctx.referenceShelfDom) root.insertBefore(ctx.referenceShelfDom.root, header)
   ctx.lightbox = createLightbox(node)
   updateFolderOptions(ctx)
 
@@ -4210,6 +4600,10 @@ function buildGalleryDom(node) {
   }
   document.addEventListener('paste', ctx.documentPasteHandler, true)
 
+  const isReferenceShelfDropTarget = (event) => {
+    const shelfRoot = ctx.referenceShelfDom?.root
+    return Boolean(shelfRoot && event.target instanceof Node && shelfRoot.contains(event.target))
+  }
   let externalDragDepth = 0
   const isFolderTabDropTarget = (target) => target instanceof Node && tabs.contains(target)
   const setDragActive = (active, folderReady = false, folderHover = false) => {
@@ -4220,10 +4614,11 @@ function buildGalleryDom(node) {
   }
   const clearExternalDragState = () => { externalDragDepth = 0; setDragActive(false) }
   ctx.clearExternalDragState = clearExternalDragState
-  root.addEventListener('dragenter', (event) => { if (!consumeExternalFileDrag(event) && !activatePotentialExternalFileDrag(event)) return; externalDragDepth += 1; const folderReady = hasExternalDirectoryDrag(event); setDragActive(true, folderReady, isFolderTabDropTarget(event.target)) }, true)
-  root.addEventListener('dragover', (event) => { if (!consumeExternalFileDrag(event) && !activatePotentialExternalFileDrag(event)) return; const folderReady = hasExternalDirectoryDrag(event); setDragActive(true, folderReady, isFolderTabDropTarget(event.target)) }, true)
-  root.addEventListener('dragleave', (event) => { if (!(externalDragDepth > 0 || hasExternalFileDrag(event))) return; event.preventDefault(); event.stopPropagation(); externalDragDepth = Math.max(0, externalDragDepth - 1); if (!externalDragDepth) setDragActive(false) }, true)
+  root.addEventListener('dragenter', (event) => { if (isReferenceShelfDropTarget(event)) return; if (!consumeExternalFileDrag(event) && !activatePotentialExternalFileDrag(event)) return; externalDragDepth += 1; const folderReady = hasExternalDirectoryDrag(event); setDragActive(true, folderReady, isFolderTabDropTarget(event.target)) }, true)
+  root.addEventListener('dragover', (event) => { if (isReferenceShelfDropTarget(event)) return; if (!consumeExternalFileDrag(event) && !activatePotentialExternalFileDrag(event)) return; const folderReady = hasExternalDirectoryDrag(event); setDragActive(true, folderReady, isFolderTabDropTarget(event.target)) }, true)
+  root.addEventListener('dragleave', (event) => { if (isReferenceShelfDropTarget(event)) return; if (!(externalDragDepth > 0 || hasExternalFileDrag(event))) return; event.preventDefault(); event.stopPropagation(); externalDragDepth = Math.max(0, externalDragDepth - 1); if (!externalDragDepth) setDragActive(false) }, true)
   root.addEventListener('drop', async (event) => {
+    if (isReferenceShelfDropTarget(event)) return
     if (!hasExternalFileDrag(event)) { clearExternalDragState(); return }
     const folderTarget = isFolderTabDropTarget(event.target)
     finalizeExternalFileDrag(event)
@@ -4793,7 +5188,8 @@ function initializeNode(node, widget) {
   queueWidget.serialize = false
 
   const oldSize = node.size || [420, 700]
-  node.setSize?.([Math.max(oldSize[0], MIN_NODE_WIDTH), Math.max(oldSize[1], MIN_NODE_HEIGHT)])
+  const minHeight = isVueNodesMode() ? MIN_NODE_HEIGHT + VUE_SHELF_RESERVE : MIN_NODE_HEIGHT
+  node.setSize?.([Math.max(oldSize[0], MIN_NODE_WIDTH), Math.max(oldSize[1], minHeight)])
 
   attachQueueLifecycle(node)
   autoQueueCoordinator.registerNode(node)
@@ -4944,6 +5340,8 @@ function initializeNode(node, widget) {
     }
     cacheRenderableState(node, snapshot.state, snapshot.uiState)
     hydrateReferencePresetName(node, snapshot.state)
+    updateReferenceShelfDom(node)
+    ensureVueShelfHeight(node, MIN_NODE_HEIGHT + VUE_SHELF_RESERVE)
     queueMicrotask(() => scheduleRenderNode(node))
   })
 
@@ -5004,6 +5402,8 @@ function initializeNode(node, widget) {
     ctx.inputAbortController?.abort?.()
     ctx.inputAbortController = null
     clearTimeout(ctx.searchTimer)
+    clearTimeout(ctx.referenceShelfToggleRetry)
+    ctx.referenceShelfToggleRetry = 0
     clearTimeout(ctx.scrollSettleTimer)
     ctx.scrollSettleTimer = 0
     ctx.lightbox?.root?.remove?.()
@@ -5046,7 +5446,9 @@ function initializeNode(node, widget) {
   }
   cacheRenderableState(node, snapshot.state, snapshot.uiState)
   hydrateReferencePresetName(node, snapshot.state)
+  updateReferenceShelfDom(node)
   queueMicrotask(() => scheduleRenderNode(node))
+  ensureVueShelfHeight(node, minHeight)
   keyboardCoordinator.registerNode(node)
   return widget
 }
